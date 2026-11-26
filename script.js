@@ -85,7 +85,7 @@ function setStatus(text, color) {
 // NORMALIZAR TEXTO
 // ==================================================
 
-function normalize(text) {
+ function normalize(text) {     return text         .toLowerCase()         .normalize("NFD")         .replace(/[\u0300-\u036f]/g, "")         .replace(/[¿?¡!.,;:]/g, "")         .trim(); } {
     return text
         .toLowerCase()
         .normalize("NFD")
