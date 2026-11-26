@@ -1,767 +1,495 @@
 
-// ==================================================
-// J.A.R.V.I.S. 2.1 - MEMORIA + CALCULADORA + VOZ
-// ==================================================
+/* ==========================================
+   J.A.R.V.I.S. 3.0
+   MEMORIA + VOZ + CALCULADORA + IA CLOUDFLARE
+========================================== */
+
+const WORKER_URL = "https://jarvis-brain.patriciovaladez37.workers.dev";
 
 const chat = document.getElementById("chat");
-const input = document.getElementById("userInput");
+const userInput = document.getElementById("userInput");
 const sendButton = document.getElementById("sendButton");
 const micButton = document.getElementById("micButton");
 const voiceButton = document.getElementById("voiceButton");
 const clearButton = document.getElementById("clearButton");
-const statusText = document.getElementById("status");
+const statusElement = document.getElementById("status");
 const statusDot = document.getElementById("statusDot");
 const core = document.getElementById("core");
-const assistantMessage = document.getElementById("assistantMessage");
-
-let voiceEnabled = true;
-let recognition = null;
-let isListening = false;
-let lastTopic = "";
-let conversationHistory = [];
 
 const MEMORY_KEY = "jarvis_memory_v2";
 const CHAT_KEY = "jarvis_chat_v2";
 
-// ==================================================
-// MEMORIA
-// ==================================================
-
-function loadMemory() {
-    try {
-        return JSON.parse(localStorage.getItem(MEMORY_KEY)) || {
-            name: "",
-            notes: []
-        };
-    } catch {
-        return { name: "", notes: [] };
-    }
-}
+let voiceEnabled = true;
+let recognition = null;
+let busy = false;
 
 let memory = loadMemory();
+let conversation = loadConversation();
+
+function loadMemory() {
+  try {
+    return JSON.parse(localStorage.getItem(MEMORY_KEY)) || {
+      name: "",
+      notes: []
+    };
+  } catch {
+    return { name: "", notes: [] };
+  }
+}
+
+function loadConversation() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_KEY));
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
 
 function saveMemory() {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(memory));
+  localStorage.setItem(MEMORY_KEY, JSON.stringify(memory));
 }
 
-function saveChat() {
-    localStorage.setItem(
-        CHAT_KEY,
-        JSON.stringify(conversationHistory.slice(-40))
-    );
+function saveConversation() {
+  conversation = conversation.slice(-40);
+  localStorage.setItem(CHAT_KEY, JSON.stringify(conversation));
 }
-
-function loadChat() {
-    try {
-        return JSON.parse(localStorage.getItem(CHAT_KEY)) || [];
-    } catch {
-        return [];
-    }
-}
-
-// ==================================================
-// NORMALIZAR TEXTO
-// ==================================================
 
 function normalize(text) {
-    return text
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[¿?¡!.,;:]/g, "")
-        .trim();
+  return String(text)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[¿?¡!.,;:]/g, "")
+    .trim();
 }
 
-// ==================================================
-// ESTADO
-// ==================================================
+function setStatus(message, online = true) {
+  if (statusElement) statusElement.textContent = message;
 
-function setStatus(text, color) {
-    if (statusText) statusText.textContent = text;
-
-    if (statusDot && color) {
-        statusDot.style.background = color;
-        statusDot.style.boxShadow = "0 0 12px " + color;
-    }
+  if (statusDot) {
+    statusDot.style.background = online ? "#00e5ff" : "#ff4444";
+  }
 }
 
-// ==================================================
-// MENSAJES
-// ==================================================
+function addMessage(text, sender = "assistant", save = true) {
+  if (!chat) return;
 
-function addMessage(text, type, save = true) {
-    if (!chat) return;
+  const message = document.createElement("div");
+  message.classList.add("message");
+  message.classList.add(
+    sender === "user" ? "user-message" : "assistant-message"
+  );
 
-    const box = document.createElement("div");
-    box.className = "message " + type;
+  message.textContent = text;
+  chat.appendChild(message);
+  chat.scrollTop = chat.scrollHeight;
 
-    const speaker = document.createElement("span");
-    speaker.className = "speaker";
-    speaker.textContent = type === "jarvis" ? "JARVIS" : "TÚ";
-
-    const paragraph = document.createElement("p");
-    paragraph.textContent = text;
-
-    box.appendChild(speaker);
-    box.appendChild(paragraph);
-    chat.appendChild(box);
-    chat.scrollTop = chat.scrollHeight;
-
-    if (save) {
-        conversationHistory.push({ text, type });
-        conversationHistory = conversationHistory.slice(-40);
-        saveChat();
-    }
+  if (save) {
+    conversation.push({
+      role: sender === "user" ? "user" : "assistant",
+      content: text
+    });
+    saveConversation();
+  }
 }
-
-function addLink(text, url) {
-    if (!chat) return;
-
-    const box = document.createElement("div");
-    box.className = "message jarvis";
-
-    const speaker = document.createElement("span");
-    speaker.className = "speaker";
-    speaker.textContent = "JARVIS";
-
-    const paragraph = document.createElement("p");
-    paragraph.textContent = text;
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "ABRIR ENLACE";
-
-    box.appendChild(speaker);
-    box.appendChild(paragraph);
-    box.appendChild(link);
-    chat.appendChild(box);
-    chat.scrollTop = chat.scrollHeight;
-
-    conversationHistory.push({ text, type: "jarvis" });
-    conversationHistory = conversationHistory.slice(-40);
-    saveChat();
-}
-
-// ==================================================
-// VOZ
-// ==================================================
 
 function speak(text) {
-    if (!voiceEnabled || !window.speechSynthesis) return;
+  if (!voiceEnabled || !("speechSynthesis" in window)) return;
 
-    window.speechSynthesis.cancel();
+  window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "es-MX";
-    utterance.rate = 0.92;
-    utterance.pitch = 0.78;
-    utterance.volume = 1;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "es-MX";
+  utterance.rate = 1;
+  utterance.pitch = 1;
 
-    utterance.onstart = () => setStatus("JARVIS HABLANDO", "#00eaff");
-    utterance.onend = () => setStatus("SISTEMA EN LÍNEA", "#00ff88");
-    utterance.onerror = () => setStatus("SISTEMA EN LÍNEA", "#00ff88");
+  const voices = window.speechSynthesis.getVoices();
+  const spanishVoice = voices.find(v =>
+    v.lang.toLowerCase().startsWith("es-mx")
+  ) || voices.find(v =>
+    v.lang.toLowerCase().startsWith("es")
+  );
 
-    window.speechSynthesis.speak(utterance);
+  if (spanishVoice) utterance.voice = spanishVoice;
+
+  window.speechSynthesis.speak(utterance);
 }
 
 function reply(text) {
-    if (assistantMessage) assistantMessage.textContent = text;
-    addMessage(text, "jarvis");
-    speak(text);
+  addMessage(text, "assistant");
+  speak(text);
 }
 
-function personalizedGreeting() {
-    return memory.name
-        ? "Saludos, " + memory.name + ". Todos mis sistemas están operativos. ¿Qué necesitas?"
-        : "Saludos. Todos mis sistemas están operativos. ¿Qué necesitas?";
+function getName() {
+  return memory.name || "Pato";
 }
 
-// ==================================================
-// BÚSQUEDAS Y ENLACES
-// ==================================================
-
-function showWebsite(name, url) {
-    const text = "He preparado el acceso a " + name + ". Pulsa el enlace para abrirlo.";
-
-    if (assistantMessage) assistantMessage.textContent = text;
-
-    addLink(text, url);
-    speak("He preparado el enlace a " + name);
-}
-
-function searchWeb(query) {
-    lastTopic = query;
-    showWebsite(
-        "tu búsqueda: " + query,
-        "https://www.google.com/search?q=" + encodeURIComponent(query)
-    );
-}
-
-function searchYouTube(query) {
-    lastTopic = query;
-    showWebsite(
-        "YouTube: " + query,
-        "https://www.youtube.com/results?search_query=" + encodeURIComponent(query)
-    );
-}
-
-// ==================================================
-// MEMORIA PERSONAL
-// ==================================================
-
-function rememberSomething(text) {
-    const note = text.trim();
-
-    if (!note) {
-        reply("No detecté qué información deseas que recuerde.");
-        return;
-    }
-
-    memory.notes.push(note);
-    memory.notes = memory.notes.slice(-30);
-    saveMemory();
-
-    reply("Información guardada en mi memoria local: " + note);
-}
-
-function showMemory() {
-    const result = [];
-
-    if (memory.name) {
-        result.push("Tu nombre es " + memory.name + ".");
-    }
-
-    if (memory.notes.length) {
-        result.push("También recuerdo lo siguiente:");
-
-        memory.notes.forEach((note, index) => {
-            result.push((index + 1) + ". " + note);
-        });
-    }
-
-    if (!result.length) {
-        reply("Mi memoria todavía está vacía. Puedes decirme: recuerda que...");
-        return;
-    }
-
-    reply(result.join(" "));
-}
-
-function forgetMemory() {
-    memory = { name: "", notes: [] };
-    saveMemory();
-    reply("Memoria personal eliminada.");
-}
-
-// ==================================================
-// NOMBRE
-// ==================================================
-
-function setName(name) {
-    name = name.trim();
-
-    if (!name) {
-        reply("No escuché el nombre correctamente.");
-        return;
-    }
-
-    memory.name = name;
-    saveMemory();
-
-    reply("Entendido. Te llamaré " + name + " a partir de ahora.");
-}
-
-// ==================================================
-// CALCULADORA CORREGIDA
-// ==================================================
+/* ==========================================
+   CALCULADORA
+========================================== */
 
 function calculate(text) {
-    let expression = normalize(text);
+  let expression = normalize(text);
 
-    expression = expression
-        .replace(/cuanto es/g, "")
-        .replace(/cuanto da/g, "")
-        .replace(/calculame/g, "")
-        .replace(/calcula/g, "")
-        .replace(/resuelve/g, "")
-        .replace(/multiplicado por/g, "*")
-        .replace(/dividido entre/g, "/")
-        .replace(/mas/g, "+")
-        .replace(/menos/g, "-")
-        .replace(/por/g, "*")
-        .replace(/entre/g, "/")
-        .replace(/%/g, "/100")
-        .trim();
+  expression = expression
+    .replace(/^cuanto es /, "")
+    .replace(/^cuanto da /, "")
+    .replace(/^calcula /, "")
+    .replace(/^calculame /, "")
+    .replace(/^resuelve /, "")
+    .replace(/multiplicado por/g, "*")
+    .replace(/por/g, "*")
+    .replace(/dividido entre/g, "/")
+    .replace(/entre/g, "/")
+    .replace(/mas/g, "+")
+    .replace(/menos/g, "-")
+    .replace(/x/g, "*")
+    .replace(/,/g, ".")
+    .replace(/\s+/g, "");
 
-    if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-        reply("No pude interpretar esa operación matemática.");
-        return;
+  if (!/^[0-9+\-*/().%]+$/.test(expression)) return null;
+  if (!/[+\-*/]/.test(expression)) return null;
+
+  try {
+    const result = Function('"use strict"; return (' + expression + ')')();
+
+    if (typeof result !== "number" || !Number.isFinite(result)) {
+      return "No puedo calcular esa operación.";
     }
 
-    try {
-        const result = Function(
-            '"use strict"; return (' + expression + ')'
-        )();
-
-        if (!Number.isFinite(result)) {
-            reply("El resultado no es válido.");
-            return;
-        }
-
-        reply("El resultado es " + result);
-    } catch {
-        reply("No pude resolver esa operación.");
-    }
+    return `El resultado es ${result}.`;
+  } catch {
+    return null;
+  }
 }
 
-// ==================================================
-// PROCESAR COMANDOS
-// ==================================================
+/* ==========================================
+   COMANDOS LOCALES
+========================================== */
 
-function processCommand(rawText) {
-    const original = rawText.trim();
-    const command = normalize(original);
+function localCommand(original) {
+  const text = normalize(original);
 
-    if (!command) return;
+  // Nombre del usuario
+  const nameMatch = original.match(/me llamo\s+(.+)/i);
 
-    addMessage(original, "user");
-    setStatus("ANALIZANDO", "#ffaa00");
+  if (nameMatch) {
+    memory.name = nameMatch[1].trim().replace(/[.!?]+$/, "");
+    saveMemory();
+    return `Entendido. Te llamaré ${memory.name} a partir de ahora.`;
+  }
 
-    // NOMBRE
+  // Saludos
+  if (
+    text === "hola" ||
+    text.includes("hola jarvis") ||
+    text.includes("buenos dias") ||
+    text.includes("buenas tardes") ||
+    text.includes("buenas noches")
+  ) {
+    return `Saludos, ${getName()}. Todos mis sistemas están operativos. ¿Qué necesitas?`;
+  }
 
-    if (
-        command.startsWith("me llamo ") ||
-        command.startsWith("mi nombre es ") ||
-        command.startsWith("llamame ")
-    ) {
-        const name = original
-            .replace(/^me llamo\s+/i, "")
-            .replace(/^mi nombre es\s+/i, "")
-            .replace(/^llámame\s+/i, "")
-            .replace(/^llamame\s+/i, "")
-            .trim();
+  // Hora y fecha
+  if (text.includes("que hora") || text === "hora") {
+    return `Son las ${new Date().toLocaleTimeString("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit"
+    })}.`;
+  }
 
-        setName(name);
-        return;
-    }
+  if (text.includes("que fecha") || text.includes("que dia es")) {
+    return `Hoy es ${new Date().toLocaleDateString("es-MX", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    })}.`;
+  }
 
-    // MEMORIA
+  // Guardar recuerdos
+  const rememberMatch = original.match(
+    /recuerda que\s+(.+)/i
+  );
 
-    if (command.startsWith("recuerda que ") || command.startsWith("recuerda ")) {
-        const note = original
-            .replace(/^recuerda que\s+/i, "")
-            .replace(/^recuerda\s+/i, "")
-            .trim();
+  if (rememberMatch) {
+    const note = rememberMatch[1].trim();
 
-        rememberSomething(note);
-        return;
-    }
+    memory.notes.push(note);
+    saveMemory();
 
-    if (
-        command.includes("que recuerdas") ||
-        command.includes("que tienes en tu memoria") ||
-        command.includes("mis recuerdos") ||
-        command.includes("muestra tu memoria")
-    ) {
-        showMemory();
-        return;
-    }
+    return `Lo recordaré, ${getName()}: ${note}`;
+  }
 
-    if (
-        command.includes("borra tu memoria") ||
-        command.includes("olvida todo lo que recuerdas") ||
-        command.includes("elimina tus recuerdos")
-    ) {
-        forgetMemory();
-        return;
-    }
+  // Consultar recuerdos
+  if (
+    text.includes("que recuerdas") ||
+    text.includes("que recuerdas de mi") ||
+    text.includes("que sabes de mi")
+  ) {
+    const notes = memory.notes.length
+      ? memory.notes.map((n, i) => `${i + 1}. ${n}`).join("\n")
+      : "Todavía no tengo recuerdos guardados.";
 
-    // SALUDOS
+    return `Recuerdo que te llamas ${getName()}.\n${notes}`;
+  }
 
-    if (
-        command === "hola" ||
-        command.startsWith("hola jarvis") ||
-        command.includes("buenos dias") ||
-        command.includes("buenas tardes") ||
-        command.includes("buenas noches") ||
-        command === "hey" ||
-        command === "que onda"
-    ) {
-        reply(personalizedGreeting());
-        return;
-    }
+  // Borrar recuerdos
+  if (text.includes("borra tu memoria") || text.includes("olvida todo")) {
+    memory.notes = [];
+    memory.name = "";
+    saveMemory();
+    return "He borrado mis recuerdos guardados.";
+  }
 
-    // IDENTIDAD
+  // Calculadora
+  if (
+    text.startsWith("cuanto es") ||
+    text.startsWith("cuanto da") ||
+    text.startsWith("calcula") ||
+    text.startsWith("calculame") ||
+    text.startsWith("resuelve")
+  ) {
+    const result = calculate(original);
+    if (result) return result;
+  }
 
-    if (
-        command.includes("quien eres") ||
-        command.includes("como te llamas") ||
-        command.includes("tu nombre")
-    ) {
-        reply("Soy JARVIS, Just a Rather Very Intelligent System. Tu asistente personal.");
-        return;
-    }
+  // Búsquedas
+  if (text.startsWith("busca ") || text.startsWith("buscame ")) {
+    const query = original
+      .replace(/^busca(r)?\s+/i, "")
+      .replace(/^buscame\s+/i, "")
+      .trim();
 
-    // HORA
-
-    if (command.includes("hora") || command.includes("que horario es")) {
-        const time = new Date().toLocaleTimeString("es-MX", {
-            hour: "2-digit",
-            minute: "2-digit"
-        });
-
-        reply("La hora actual es " + time);
-        return;
-    }
-
-    // FECHA
-
-    if (command.includes("fecha") || command.includes("que dia es hoy")) {
-        const date = new Date().toLocaleDateString("es-MX", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric"
-        });
-
-        reply("Hoy es " + date);
-        return;
-    }
-
-    // CALCULADORA
-
-    if (
-        command.startsWith("cuanto es ") ||
-        command.startsWith("cuanto da ") ||
-        command.startsWith("calcula ") ||
-        command.startsWith("calculame ") ||
-        command.startsWith("resuelve ") ||
-        /^[0-9]+\s*([+\-*/])\s*[0-9]+$/.test(command)
-    ) {
-        calculate(command);
-        return;
-    }
-
-    // ESTADO
-
-    if (
-        command.includes("como estas") ||
-        command.includes("estado del sistema") ||
-        command.includes("sistemas operativos")
-    ) {
-        reply("Funcionando dentro de parámetros normales. Memoria local activa. Interfaz operativa. Estoy listo para ayudarte.");
-        return;
-    }
-
-    // BUSCAR EN GOOGLE
-
-    if (
-        command.startsWith("busca ") ||
-        command.startsWith("buscar ") ||
-        command.startsWith("investiga ") ||
-        command.startsWith("googlea ")
-    ) {
-        const query = original
-            .replace(/^buscar?\s+/i, "")
-            .replace(/^investiga\s+/i, "")
-            .replace(/^googlea\s+/i, "")
-            .trim();
-
-        searchWeb(query);
-        return;
-    }
-
-    // YOUTUBE
-
-    if (command.startsWith("busca en youtube ") || command.startsWith("youtube busca ")) {
-        const query = original
-            .replace(/^busca en youtube\s+/i, "")
-            .replace(/^youtube busca\s+/i, "")
-            .trim();
-
-        searchYouTube(query);
-        return;
-    }
-
-    if (command.includes("youtube")) {
-        showWebsite("YouTube", "https://www.youtube.com/");
-        return;
-    }
-
-    // SITIOS WEB
-
-    const websites = [
-        ["spotify", "Spotify", "https://open.spotify.com/"],
-        ["chatgpt", "ChatGPT", "https://chatgpt.com/"],
-        ["chat gpt", "ChatGPT", "https://chatgpt.com/"],
-        ["instagram", "Instagram", "https://www.instagram.com/"],
-        ["facebook", "Facebook", "https://www.facebook.com/"],
-        ["tiktok", "TikTok", "https://www.tiktok.com/"],
-        ["google", "Google", "https://www.google.com/"]
-    ];
-
-    for (const [keyword, name, url] of websites) {
-        if (command.includes(keyword)) {
-            showWebsite(name, url);
-            return;
-        }
-    }
-
-    // AYUDA
-
-    if (
-        command.includes("ayuda") ||
-        command.includes("que puedes hacer") ||
-        command.includes("tus funciones")
-    ) {
-        reply("Puedo conversar mediante comandos, recordar datos, guardar tu nombre, decirte la hora y fecha, resolver operaciones matemáticas, preparar búsquedas, abrir sitios web y utilizar reconocimiento y síntesis de voz. Mi IA generativa todavía no está conectada.");
-        return;
-    }
-
-    // GRACIAS
-
-    if (command.includes("gracias") || command.includes("te lo agradezco")) {
-        reply("Siempre a tus órdenes" + (memory.name ? ", " + memory.name : "") + ".");
-        return;
-    }
-
-    // DESPEDIDA
-
-    if (
-        command.includes("adios") ||
-        command.includes("hasta luego") ||
-        command.includes("nos vemos")
-    ) {
-        reply("Hasta luego. Estaré disponible cuando me necesites.");
-        return;
-    }
-
-    // LIMPIAR CHAT
-
-    if (
-        command.includes("reinicia conversacion") ||
-        command.includes("reiniciar conversacion") ||
-        command === "limpia chat"
-    ) {
-        clearChat();
-        return;
-    }
-
-    // CONTEXTO
-
-    if (command.startsWith("y ") || command.startsWith("tambien ") || command.startsWith("ahora busca ")) {
-        if (lastTopic) {
-            searchWeb(lastTopic + " " + original.replace(/^y\s+/i, ""));
-            return;
-        }
-    }
-
-    if (command.includes("cuentame mas") || command.includes("dime mas") || command.includes("continua")) {
-        if (lastTopic) {
-            searchWeb("más información sobre " + lastTopic);
-            return;
-        }
-    }
-
-    // PREGUNTAS QUE PUEDEN BUSCARSE
-
-    if (
-        command.includes("quien es") ||
-        command.includes("que es ") ||
-        command.includes("como funciona ") ||
-        command.includes("por que ")
-    ) {
-        searchWeb(original);
-        return;
-    }
-
-    // RESPUESTA GENERAL
-
-    reply(
-        "Entiendo tu solicitud" +
-        (memory.name ? ", " + memory.name : "") +
-        ". Todavía no tengo un modelo de inteligencia artificial conectado para generar respuestas abiertas. Puedo ayudarte a buscar información o ejecutar mis funciones."
+    window.open(
+      "https://www.google.com/search?q=" + encodeURIComponent(query),
+      "_blank"
     );
+
+    return `Estoy buscando ${query} en Google.`;
+  }
+
+  if (text.startsWith("busca en youtube ")) {
+    const query = original.replace(/busca en youtube /i, "").trim();
+
+    window.open(
+      "https://www.youtube.com/results?search_query=" +
+      encodeURIComponent(query),
+      "_blank"
+    );
+
+    return `Buscando ${query} en YouTube.`;
+  }
+
+  // Abrir páginas
+  const sites = {
+    spotify: "https://open.spotify.com",
+    google: "https://www.google.com",
+    youtube: "https://www.youtube.com",
+    instagram: "https://www.instagram.com",
+    facebook: "https://www.facebook.com",
+    tiktok: "https://www.tiktok.com",
+    chatgpt: "https://chatgpt.com"
+  };
+
+  for (const [name, url] of Object.entries(sites)) {
+    if (text === `abre ${name}` || text === `abrir ${name}`) {
+      window.open(url, "_blank");
+      return `Abriendo ${name}.`;
+    }
+  }
+
+  return null;
 }
 
-// ==================================================
-// ENVÍO
-// ==================================================
+/* ==========================================
+   CONEXIÓN CON EL CEREBRO DE CLOUDFLARE
+========================================== */
 
-function sendMessage() {
-    if (!input) return;
+async function askCloudflare(message) {
+  setStatus("Consultando inteligencia artificial...", true);
 
-    const text = input.value.trim();
-    if (!text) return;
+  const history = conversation
+    .slice(-8, -1)
+    .filter(item =>
+      item &&
+      ["user", "assistant"].includes(item.role) &&
+      typeof item.content === "string"
+    );
 
-    input.value = "";
-    processCommand(text);
-}
-
-if (sendButton) {
-    sendButton.addEventListener("click", sendMessage);
-}
-
-if (input) {
-    input.addEventListener("keydown", function(event) {
-        if (event.key === "Enter") sendMessage();
+  try {
+    const response = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message,
+        history,
+        name: getName()
+      })
     });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `Error del servidor: ${response.status}`);
+    }
+
+    if (!data.reply) {
+      throw new Error("El servidor no devolvió una respuesta.");
+    }
+
+    setStatus("JARVIS en línea", true);
+    return data.reply;
+
+  } catch (error) {
+    console.error("Error conectando con JARVIS:", error);
+    setStatus("Error de conexión", false);
+
+    return "No pude conectar con mi cerebro de inteligencia artificial. " +
+      "Comprueba que Cloudflare esté disponible y que la conexión no esté bloqueada. " +
+      "Detalle: " + error.message;
+  }
 }
 
-// ==================================================
-// RECONOCIMIENTO DE VOZ
-// ==================================================
+/* ==========================================
+   ENVÍO DE MENSAJES
+========================================== */
+
+async function sendMessage() {
+  if (busy || !userInput) return;
+
+  const original = userInput.value.trim();
+  if (!original) return;
+
+  userInput.value = "";
+  addMessage(original, "user");
+
+  const localResponse = localCommand(original);
+
+  if (localResponse !== null) {
+    reply(localResponse);
+    return;
+  }
+
+  busy = true;
+
+  if (sendButton) sendButton.disabled = true;
+
+  try {
+    const response = await askCloudflare(original);
+    reply(response);
+  } finally {
+    busy = false;
+    if (sendButton) sendButton.disabled = false;
+    if (userInput) userInput.focus();
+  }
+}
+
+/* ==========================================
+   RECONOCIMIENTO DE VOZ
+========================================== */
 
 const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
+  window.SpeechRecognition || window.webkitSpeechRecognition;
 
-if (SpeechRecognition && micButton) {
-    recognition = new SpeechRecognition();
-    recognition.lang = "es-MX";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.lang = "es-MX";
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
-    recognition.onstart = function() {
-        isListening = true;
-        document.body.classList.add("listening");
-        micButton.textContent = "🛑 DETENER";
-        setStatus("ESCUCHANDO", "#00ffcc");
-    };
+  recognition.onstart = () => {
+    setStatus("Escuchando...", true);
+  };
 
-    recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
+  recognition.onresult = event => {
+    const transcript = event.results[0][0].transcript;
 
-        if (input) input.value = transcript;
+    if (userInput) {
+      userInput.value = transcript;
+      sendMessage();
+    }
+  };
 
-        processCommand(transcript);
-    };
+  recognition.onerror = () => {
+    setStatus("No pude reconocer tu voz", false);
+  };
 
-    recognition.onerror = function(event) {
-        console.log("Micrófono:", event.error);
-
-        if (event.error === "not-allowed") {
-            reply("El navegador ha bloqueado el micrófono. Puedes seguir escribiéndome.");
-        } else if (event.error === "network") {
-            reply("El reconocimiento de voz necesita conexión a Internet.");
-        } else {
-            setStatus("MICRÓFONO NO DISPONIBLE", "#ffaa00");
-        }
-    };
-
-    recognition.onend = function() {
-        isListening = false;
-        document.body.classList.remove("listening");
-        micButton.textContent = "🎤 HABLAR";
-        setStatus("SISTEMA EN LÍNEA", "#00ff88");
-    };
-
-} else if (micButton) {
-    micButton.disabled = true;
-    micButton.textContent = "MICRÓFONO NO COMPATIBLE";
+  recognition.onend = () => {
+    setStatus("JARVIS en línea", true);
+  };
 }
 
 if (micButton) {
-    micButton.addEventListener("click", function() {
-        if (!recognition) {
-            reply("El reconocimiento de voz no es compatible con este entorno.");
-            return;
-        }
-
-        if (isListening) {
-            recognition.stop();
-        } else {
-            try {
-                recognition.start();
-            } catch (error) {
-                console.log(error);
-                reply("No pude iniciar el micrófono. Comprueba los permisos.");
-            }
-        }
-    });
-}
-
-// ==================================================
-// VOZ ON / OFF
-// ==================================================
-
-if (voiceButton) {
-    voiceButton.addEventListener("click", function() {
-        voiceEnabled = !voiceEnabled;
-
-        if (voiceEnabled) {
-            voiceButton.textContent = "🔊 VOZ ON";
-            reply("Sistema de voz activado.");
-        } else {
-            if (window.speechSynthesis) window.speechSynthesis.cancel();
-
-            voiceButton.textContent = "🔇 VOZ OFF";
-            setStatus("SISTEMA EN LÍNEA", "#00ff88");
-            addMessage("Voz desactivada.", "jarvis");
-        }
-    });
-}
-
-// ==================================================
-// LIMPIAR CONVERSACIÓN
-// ==================================================
-
-function clearChat() {
-    if (chat) chat.innerHTML = "";
-
-    conversationHistory = [];
-    saveChat();
-
-    addMessage(
-        "Conversación reiniciada. Mi memoria personal permanece intacta.",
-        "jarvis"
-    );
-
-    if (assistantMessage) {
-        assistantMessage.textContent = "Sistemas reiniciados. Esperando instrucciones.";
+  micButton.addEventListener("click", () => {
+    if (!recognition) {
+      reply("Tu navegador no permite reconocimiento de voz.");
+      return;
     }
 
-    setStatus("SISTEMA EN LÍNEA", "#00ff88");
+    try {
+      recognition.start();
+    } catch (error) {
+      console.log(error);
+    }
+  });
+}
+
+/* ==========================================
+   BOTONES
+========================================== */
+
+if (sendButton) {
+  sendButton.addEventListener("click", sendMessage);
+}
+
+if (userInput) {
+  userInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+}
+
+if (voiceButton) {
+  voiceButton.addEventListener("click", () => {
+    voiceEnabled = !voiceEnabled;
+
+    if (!voiceEnabled && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+
+    voiceButton.textContent = voiceEnabled
+      ? "Voz activada"
+      : "Voz desactivada";
+  });
 }
 
 if (clearButton) {
-    clearButton.addEventListener("click", clearChat);
+  clearButton.addEventListener("click", () => {
+    conversation = [];
+    saveConversation();
+
+    if (chat) chat.innerHTML = "";
+
+    reply("Conversación limpiada. Estoy listo para continuar.");
+  });
 }
 
-// ==================================================
-// RECUPERAR CHAT
-// ==================================================
+/* ==========================================
+   INICIO
+========================================== */
 
-function restoreChat() {
-    const saved = loadChat();
-
-    if (!saved.length) {
-        addMessage(
-            "Sistemas en línea. Memoria local activa. Esperando instrucciones.",
-            "jarvis"
-        );
-        return;
-    }
-
-    conversationHistory = [];
-
-    saved.forEach(message => {
-        addMessage(message.text, message.type, false);
-    });
-
-    conversationHistory = saved.slice(-40);
+if (chat && conversation.length > 0) {
+  conversation.forEach(item => {
+    addMessage(item.content, item.role, false);
+  });
 }
 
-// ==================================================
-// INICIO
-// ==================================================
+setStatus("JARVIS en línea", true);
 
-restoreChat();
-
-setStatus("SISTEMA EN LÍNEA", "#00ff88");
-
-console.log("JARVIS 2.1 iniciado.");
-console.log("Memoria local:", memory);
-console.log("Módulo de voz:", recognition ? "disponible" : "no disponible");
-console.log("Sistema listo.");
+console.log("J.A.R.V.I.S. 3.0 iniciado correctamente.");
