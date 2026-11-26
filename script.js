@@ -1,7 +1,6 @@
-
 /* ==========================================
-   J.A.R.V.I.S. 3.0
-   MEMORIA + VOZ + CALCULADORA + IA CLOUDFLARE
+   J.A.R.V.I.S. 3.1
+   MEMORIA + VOZ + CALCULADORA + IA + BÚSQUEDA
 ========================================== */
 
 const WORKER_URL = "https://jarvis-brain.patriciovaladez37.workers.dev";
@@ -25,6 +24,10 @@ let busy = false;
 
 let memory = loadMemory();
 let conversation = loadConversation();
+
+/* ==========================================
+   MEMORIA
+========================================== */
 
 function loadMemory() {
   try {
@@ -64,6 +67,10 @@ function normalize(text) {
     .trim();
 }
 
+/* ==========================================
+   ESTADO
+========================================== */
+
 function setStatus(message, online = true) {
   if (statusElement) statusElement.textContent = message;
 
@@ -72,10 +79,15 @@ function setStatus(message, online = true) {
   }
 }
 
+/* ==========================================
+   CHAT
+========================================== */
+
 function addMessage(text, sender = "assistant", save = true) {
   if (!chat) return;
 
   const message = document.createElement("div");
+
   message.classList.add("message");
   message.classList.add(
     sender === "user" ? "user-message" : "assistant-message"
@@ -90,9 +102,14 @@ function addMessage(text, sender = "assistant", save = true) {
       role: sender === "user" ? "user" : "assistant",
       content: text
     });
+
     saveConversation();
   }
 }
+
+/* ==========================================
+   VOZ
+========================================== */
 
 function speak(text) {
   if (!voiceEnabled || !("speechSynthesis" in window)) return;
@@ -100,18 +117,22 @@ function speak(text) {
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
+
   utterance.lang = "es-MX";
   utterance.rate = 1;
   utterance.pitch = 1;
 
   const voices = window.speechSynthesis.getVoices();
+
   const spanishVoice = voices.find(v =>
     v.lang.toLowerCase().startsWith("es-mx")
   ) || voices.find(v =>
     v.lang.toLowerCase().startsWith("es")
   );
 
-  if (spanishVoice) utterance.voice = spanishVoice;
+  if (spanishVoice) {
+    utterance.voice = spanishVoice;
+  }
 
   window.speechSynthesis.speak(utterance);
 }
@@ -159,6 +180,7 @@ function calculate(text) {
     }
 
     return `El resultado es ${result}.`;
+
   } catch {
     return null;
   }
@@ -177,6 +199,7 @@ function localCommand(original) {
   if (nameMatch) {
     memory.name = nameMatch[1].trim().replace(/[.!?]+$/, "");
     saveMemory();
+
     return `Entendido. Te llamaré ${memory.name} a partir de ahora.`;
   }
 
@@ -191,7 +214,7 @@ function localCommand(original) {
     return `Saludos, ${getName()}. Todos mis sistemas están operativos. ¿Qué necesitas?`;
   }
 
-  // Hora y fecha
+  // Hora
   if (text.includes("que hora") || text === "hora") {
     return `Son las ${new Date().toLocaleTimeString("es-MX", {
       hour: "2-digit",
@@ -199,6 +222,7 @@ function localCommand(original) {
     })}.`;
   }
 
+  // Fecha
   if (text.includes("que fecha") || text.includes("que dia es")) {
     return `Hoy es ${new Date().toLocaleDateString("es-MX", {
       weekday: "long",
@@ -209,9 +233,7 @@ function localCommand(original) {
   }
 
   // Guardar recuerdos
-  const rememberMatch = original.match(
-    /recuerda que\s+(.+)/i
-  );
+  const rememberMatch = original.match(/recuerda que\s+(.+)/i);
 
   if (rememberMatch) {
     const note = rememberMatch[1].trim();
@@ -240,6 +262,7 @@ function localCommand(original) {
     memory.notes = [];
     memory.name = "";
     saveMemory();
+
     return "He borrado mis recuerdos guardados.";
   }
 
@@ -252,26 +275,15 @@ function localCommand(original) {
     text.startsWith("resuelve")
   ) {
     const result = calculate(original);
+
     if (result) return result;
   }
 
-  // Búsquedas
-  if (text.startsWith("busca ") || text.startsWith("buscame ")) {
-    const query = original
-      .replace(/^busca(r)?\s+/i, "")
-      .replace(/^buscame\s+/i, "")
-      .trim();
-
-    window.open(
-      "https://www.google.com/search?q=" + encodeURIComponent(query),
-      "_blank"
-    );
-
-    return `Estoy buscando ${query} en Google.`;
-  }
-
+  // YouTube: se mantiene como comando directo
   if (text.startsWith("busca en youtube ")) {
-    const query = original.replace(/busca en youtube /i, "").trim();
+    const query = original
+      .replace(/busca en youtube /i, "")
+      .trim();
 
     window.open(
       "https://www.youtube.com/results?search_query=" +
@@ -282,7 +294,7 @@ function localCommand(original) {
     return `Buscando ${query} en YouTube.`;
   }
 
-  // Abrir páginas
+  // Abrir páginas directamente
   const sites = {
     spotify: "https://open.spotify.com",
     google: "https://www.google.com",
@@ -296,15 +308,20 @@ function localCommand(original) {
   for (const [name, url] of Object.entries(sites)) {
     if (text === `abre ${name}` || text === `abrir ${name}`) {
       window.open(url, "_blank");
+
       return `Abriendo ${name}.`;
     }
   }
+
+  // IMPORTANTE:
+  // Ya no interceptamos "busca..." para abrir Google.
+  // Ahora las búsquedas se envían al cerebro de JARVIS.
 
   return null;
 }
 
 /* ==========================================
-   CONEXIÓN CON EL CEREBRO DE CLOUDFLARE
+   CEREBRO DE CLOUDFLARE
 ========================================== */
 
 async function askCloudflare(message) {
@@ -341,11 +358,18 @@ async function askCloudflare(message) {
       throw new Error("El servidor no devolvió una respuesta.");
     }
 
-    setStatus("JARVIS en línea", true);
+    setStatus(
+      data.searched
+        ? "Consulta de búsqueda procesada"
+        : "JARVIS en línea",
+      true
+    );
+
     return data.reply;
 
   } catch (error) {
     console.error("Error conectando con JARVIS:", error);
+
     setStatus("Error de conexión", false);
 
     return "No pude conectar con mi cerebro de inteligencia artificial. " +
@@ -362,9 +386,11 @@ async function sendMessage() {
   if (busy || !userInput) return;
 
   const original = userInput.value.trim();
+
   if (!original) return;
 
   userInput.value = "";
+
   addMessage(original, "user");
 
   const localResponse = localCommand(original);
@@ -376,15 +402,25 @@ async function sendMessage() {
 
   busy = true;
 
-  if (sendButton) sendButton.disabled = true;
+  if (sendButton) {
+    sendButton.disabled = true;
+  }
 
   try {
     const response = await askCloudflare(original);
+
     reply(response);
+
   } finally {
     busy = false;
-    if (sendButton) sendButton.disabled = false;
-    if (userInput) userInput.focus();
+
+    if (sendButton) {
+      sendButton.disabled = false;
+    }
+
+    if (userInput) {
+      userInput.focus();
+    }
   }
 }
 
@@ -397,6 +433,7 @@ const SpeechRecognition =
 
 if (SpeechRecognition) {
   recognition = new SpeechRecognition();
+
   recognition.lang = "es-MX";
   recognition.continuous = false;
   recognition.interimResults = false;
@@ -474,7 +511,9 @@ if (clearButton) {
     conversation = [];
     saveConversation();
 
-    if (chat) chat.innerHTML = "";
+    if (chat) {
+      chat.innerHTML = "";
+    }
 
     reply("Conversación limpiada. Estoy listo para continuar.");
   });
@@ -492,4 +531,4 @@ if (chat && conversation.length > 0) {
 
 setStatus("JARVIS en línea", true);
 
-console.log("J.A.R.V.I.S. 3.0 iniciado correctamente.");
+console.log("J.A.R.V.I.S. 3.1 iniciado correctamente.");
