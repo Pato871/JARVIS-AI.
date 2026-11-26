@@ -1,5 +1,6 @@
+
 // ==================================================
-// J.A.R.V.I.S. 2.0 - MEMORIA + CONVERSACIÓN
+// J.A.R.V.I.S. 2.1 - MEMORIA + CALCULADORA + VOZ
 // ==================================================
 
 const chat = document.getElementById("chat");
@@ -19,12 +20,12 @@ let isListening = false;
 let lastTopic = "";
 let conversationHistory = [];
 
-// ==================================================
-// MEMORIA LOCAL
-// ==================================================
-
 const MEMORY_KEY = "jarvis_memory_v2";
 const CHAT_KEY = "jarvis_chat_v2";
+
+// ==================================================
+// MEMORIA
+// ==================================================
 
 function loadMemory() {
     try {
@@ -40,22 +41,14 @@ function loadMemory() {
 let memory = loadMemory();
 
 function saveMemory() {
-    try {
-        localStorage.setItem(MEMORY_KEY, JSON.stringify(memory));
-    } catch (error) {
-        console.warn("No pude guardar la memoria.", error);
-    }
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(memory));
 }
 
 function saveChat() {
-    try {
-        localStorage.setItem(
-            CHAT_KEY,
-            JSON.stringify(conversationHistory.slice(-40))
-        );
-    } catch (error) {
-        console.warn("No pude guardar la conversación.", error);
-    }
+    localStorage.setItem(
+        CHAT_KEY,
+        JSON.stringify(conversationHistory.slice(-40))
+    );
 }
 
 function loadChat() {
@@ -67,30 +60,29 @@ function loadChat() {
 }
 
 // ==================================================
-// ESTADO DEL SISTEMA
+// NORMALIZAR TEXTO
+// ==================================================
+
+function normalize(text) {
+    return text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[¿?¡!.,;:]/g, "")
+        .trim();
+}
+
+// ==================================================
+// ESTADO
 // ==================================================
 
 function setStatus(text, color) {
-    if (statusText) {
-        statusText.textContent = text;
-    }
+    if (statusText) statusText.textContent = text;
 
     if (statusDot && color) {
         statusDot.style.background = color;
         statusDot.style.boxShadow = "0 0 12px " + color;
     }
-}
-
-// ==================================================
-// NORMALIZAR TEXTO
-// ==================================================
-
- function normalize(text) {     return text         .toLowerCase()         .normalize("NFD")         .replace(/[\u0300-\u036f]/g, "")         .replace(/[¿?¡!.,;:]/g, "")         .trim(); } {
-    return text
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim();
 }
 
 // ==================================================
@@ -113,15 +105,10 @@ function addMessage(text, type, save = true) {
     box.appendChild(speaker);
     box.appendChild(paragraph);
     chat.appendChild(box);
-
     chat.scrollTop = chat.scrollHeight;
 
     if (save) {
-        conversationHistory.push({
-            text: text,
-            type: type
-        });
-
+        conversationHistory.push({ text, type });
         conversationHistory = conversationHistory.slice(-40);
         saveChat();
     }
@@ -149,15 +136,10 @@ function addLink(text, url) {
     box.appendChild(speaker);
     box.appendChild(paragraph);
     box.appendChild(link);
-
     chat.appendChild(box);
     chat.scrollTop = chat.scrollHeight;
 
-    conversationHistory.push({
-        text: text,
-        type: "jarvis"
-    });
-
+    conversationHistory.push({ text, type: "jarvis" });
     conversationHistory = conversationHistory.slice(-40);
     saveChat();
 }
@@ -167,70 +149,43 @@ function addLink(text, url) {
 // ==================================================
 
 function speak(text) {
-    if (!voiceEnabled) return;
-
-    if (!window.speechSynthesis) {
-        setStatus("VOZ NO DISPONIBLE", "#ffaa00");
-        return;
-    }
+    if (!voiceEnabled || !window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-
     utterance.lang = "es-MX";
     utterance.rate = 0.92;
     utterance.pitch = 0.78;
     utterance.volume = 1;
 
-    utterance.onstart = function () {
-        setStatus("JARVIS HABLANDO", "#00eaff");
-    };
-
-    utterance.onend = function () {
-        setStatus("SISTEMA EN LÍNEA", "#00ff88");
-    };
-
-    utterance.onerror = function () {
-        setStatus("SISTEMA EN LÍNEA", "#00ff88");
-    };
+    utterance.onstart = () => setStatus("JARVIS HABLANDO", "#00eaff");
+    utterance.onend = () => setStatus("SISTEMA EN LÍNEA", "#00ff88");
+    utterance.onerror = () => setStatus("SISTEMA EN LÍNEA", "#00ff88");
 
     window.speechSynthesis.speak(utterance);
 }
 
-// ==================================================
-// RESPUESTAS
-// ==================================================
-
 function reply(text) {
-    if (assistantMessage) {
-        assistantMessage.textContent = text;
-    }
-
+    if (assistantMessage) assistantMessage.textContent = text;
     addMessage(text, "jarvis");
     speak(text);
 }
 
 function personalizedGreeting() {
-    if (memory.name) {
-        return "Saludos, " + memory.name +
-            ". Todos mis sistemas están operativos. ¿Qué necesitas?";
-    }
-
-    return "Saludos. Todos mis sistemas están operativos. ¿Qué necesitas?";
+    return memory.name
+        ? "Saludos, " + memory.name + ". Todos mis sistemas están operativos. ¿Qué necesitas?"
+        : "Saludos. Todos mis sistemas están operativos. ¿Qué necesitas?";
 }
 
 // ==================================================
-// ENLACES Y BÚSQUEDAS
+// BÚSQUEDAS Y ENLACES
 // ==================================================
 
 function showWebsite(name, url) {
-    const text = "He preparado el acceso a " + name +
-        ". Pulsa el enlace para abrirlo.";
+    const text = "He preparado el acceso a " + name + ". Pulsa el enlace para abrirlo.";
 
-    if (assistantMessage) {
-        assistantMessage.textContent = text;
-    }
+    if (assistantMessage) assistantMessage.textContent = text;
 
     addLink(text, url);
     speak("He preparado el enlace a " + name);
@@ -238,22 +193,18 @@ function showWebsite(name, url) {
 
 function searchWeb(query) {
     lastTopic = query;
-
-    const url =
-        "https://www.google.com/search?q=" +
-        encodeURIComponent(query);
-
-    showWebsite("tu búsqueda: " + query, url);
+    showWebsite(
+        "tu búsqueda: " + query,
+        "https://www.google.com/search?q=" + encodeURIComponent(query)
+    );
 }
 
 function searchYouTube(query) {
     lastTopic = query;
-
-    const url =
-        "https://www.youtube.com/results?search_query=" +
-        encodeURIComponent(query);
-
-    showWebsite("YouTube: " + query, url);
+    showWebsite(
+        "YouTube: " + query,
+        "https://www.youtube.com/results?search_query=" + encodeURIComponent(query)
+    );
 }
 
 // ==================================================
@@ -270,20 +221,19 @@ function rememberSomething(text) {
 
     memory.notes.push(note);
     memory.notes = memory.notes.slice(-30);
-
     saveMemory();
 
     reply("Información guardada en mi memoria local: " + note);
 }
 
 function showMemory() {
-    let result = [];
+    const result = [];
 
     if (memory.name) {
         result.push("Tu nombre es " + memory.name + ".");
     }
 
-    if (memory.notes.length > 0) {
+    if (memory.notes.length) {
         result.push("También recuerdo lo siguiente:");
 
         memory.notes.forEach((note, index) => {
@@ -291,7 +241,7 @@ function showMemory() {
         });
     }
 
-    if (result.length === 0) {
+    if (!result.length) {
         reply("Mi memoria todavía está vacía. Puedes decirme: recuerda que...");
         return;
     }
@@ -300,22 +250,17 @@ function showMemory() {
 }
 
 function forgetMemory() {
-    memory = {
-        name: "",
-        notes: []
-    };
-
+    memory = { name: "", notes: [] };
     saveMemory();
-
-    reply("Memoria personal eliminada. He borrado los datos que guardé.");
+    reply("Memoria personal eliminada.");
 }
 
 // ==================================================
 // NOMBRE
 // ==================================================
 
-function setName(text) {
-    const name = text.trim();
+function setName(name) {
+    name = name.trim();
 
     if (!name) {
         reply("No escuché el nombre correctamente.");
@@ -329,22 +274,24 @@ function setName(text) {
 }
 
 // ==================================================
-// CALCULADORA
+// CALCULADORA CORREGIDA
 // ==================================================
 
 function calculate(text) {
-    let expression = text
-        .replace(/cuanto es/gi, "")
-        .replace(/calcula/gi, "")
-        .replace(/calculame/gi, "")
-        .replace(/resuelve/gi, "")
-        .replace(/cuanto da/gi, "")
-        .replace(/mas/gi, "+")
-        .replace(/menos/gi, "-")
-        .replace(/por/gi, "*")
-        .replace(/multiplicado por/gi, "*")
-        .replace(/entre/gi, "/")
-        .replace(/dividido entre/gi, "/")
+    let expression = normalize(text);
+
+    expression = expression
+        .replace(/cuanto es/g, "")
+        .replace(/cuanto da/g, "")
+        .replace(/calculame/g, "")
+        .replace(/calcula/g, "")
+        .replace(/resuelve/g, "")
+        .replace(/multiplicado por/g, "*")
+        .replace(/dividido entre/g, "/")
+        .replace(/mas/g, "+")
+        .replace(/menos/g, "-")
+        .replace(/por/g, "*")
+        .replace(/entre/g, "/")
         .replace(/%/g, "/100")
         .trim();
 
@@ -370,7 +317,7 @@ function calculate(text) {
 }
 
 // ==================================================
-// COMANDOS INTELIGENTES
+// PROCESAR COMANDOS
 // ==================================================
 
 function processCommand(rawText) {
@@ -382,18 +329,18 @@ function processCommand(rawText) {
     addMessage(original, "user");
     setStatus("ANALIZANDO", "#ffaa00");
 
-    // RECORDAR NOMBRE
+    // NOMBRE
 
     if (
         command.startsWith("me llamo ") ||
         command.startsWith("mi nombre es ") ||
         command.startsWith("llamame ")
     ) {
-        let name = original
-            .replace(/^me llamo /i, "")
-            .replace(/^mi nombre es /i, "")
-            .replace(/^llámame /i, "")
-            .replace(/^llamame /i, "")
+        const name = original
+            .replace(/^me llamo\s+/i, "")
+            .replace(/^mi nombre es\s+/i, "")
+            .replace(/^llámame\s+/i, "")
+            .replace(/^llamame\s+/i, "")
             .trim();
 
         setName(name);
@@ -402,13 +349,10 @@ function processCommand(rawText) {
 
     // MEMORIA
 
-    if (
-        command.startsWith("recuerda que ") ||
-        command.startsWith("recuerda ")
-    ) {
+    if (command.startsWith("recuerda que ") || command.startsWith("recuerda ")) {
         const note = original
-            .replace(/^recuerda que /i, "")
-            .replace(/^recuerda /i, "")
+            .replace(/^recuerda que\s+/i, "")
+            .replace(/^recuerda\s+/i, "")
             .trim();
 
         rememberSomething(note);
@@ -456,19 +400,13 @@ function processCommand(rawText) {
         command.includes("como te llamas") ||
         command.includes("tu nombre")
     ) {
-        reply(
-            "Soy JARVIS, Just a Rather Very Intelligent System. " +
-            "Tu asistente personal. Mi sistema de memoria está activo."
-        );
+        reply("Soy JARVIS, Just a Rather Very Intelligent System. Tu asistente personal.");
         return;
     }
 
     // HORA
 
-    if (
-        command.includes("hora") ||
-        command.includes("que horario es")
-    ) {
+    if (command.includes("hora") || command.includes("que horario es")) {
         const time = new Date().toLocaleTimeString("es-MX", {
             hour: "2-digit",
             minute: "2-digit"
@@ -480,10 +418,7 @@ function processCommand(rawText) {
 
     // FECHA
 
-    if (
-        command.includes("fecha") ||
-        command.includes("que dia es hoy")
-    ) {
+    if (command.includes("fecha") || command.includes("que dia es hoy")) {
         const date = new Date().toLocaleDateString("es-MX", {
             weekday: "long",
             day: "numeric",
@@ -502,7 +437,8 @@ function processCommand(rawText) {
         command.startsWith("cuanto da ") ||
         command.startsWith("calcula ") ||
         command.startsWith("calculame ") ||
-        command.startsWith("resuelve ")
+        command.startsWith("resuelve ") ||
+        /^[0-9]+\s*([+\-*/])\s*[0-9]+$/.test(command)
     ) {
         calculate(command);
         return;
@@ -515,15 +451,11 @@ function processCommand(rawText) {
         command.includes("estado del sistema") ||
         command.includes("sistemas operativos")
     ) {
-        reply(
-            "Funcionando dentro de parámetros normales. " +
-            "Memoria local activa. Interfaz operativa. " +
-            "Estoy listo para ayudarte."
-        );
+        reply("Funcionando dentro de parámetros normales. Memoria local activa. Interfaz operativa. Estoy listo para ayudarte.");
         return;
     }
 
-    // BUSCAR
+    // BUSCAR EN GOOGLE
 
     if (
         command.startsWith("busca ") ||
@@ -532,7 +464,7 @@ function processCommand(rawText) {
         command.startsWith("googlea ")
     ) {
         const query = original
-            .replace(/^busca(r)?\s+/i, "")
+            .replace(/^buscar?\s+/i, "")
             .replace(/^investiga\s+/i, "")
             .replace(/^googlea\s+/i, "")
             .trim();
@@ -543,13 +475,10 @@ function processCommand(rawText) {
 
     // YOUTUBE
 
-    if (
-        command.startsWith("busca en youtube ") ||
-        command.startsWith("youtube busca ")
-    ) {
+    if (command.startsWith("busca en youtube ") || command.startsWith("youtube busca ")) {
         const query = original
-            .replace(/^busca en youtube /i, "")
-            .replace(/^youtube busca /i, "")
+            .replace(/^busca en youtube\s+/i, "")
+            .replace(/^youtube busca\s+/i, "")
             .trim();
 
         searchYouTube(query);
@@ -563,34 +492,21 @@ function processCommand(rawText) {
 
     // SITIOS WEB
 
-    if (command.includes("spotify")) {
-        showWebsite("Spotify", "https://open.spotify.com/");
-        return;
-    }
+    const websites = [
+        ["spotify", "Spotify", "https://open.spotify.com/"],
+        ["chatgpt", "ChatGPT", "https://chatgpt.com/"],
+        ["chat gpt", "ChatGPT", "https://chatgpt.com/"],
+        ["instagram", "Instagram", "https://www.instagram.com/"],
+        ["facebook", "Facebook", "https://www.facebook.com/"],
+        ["tiktok", "TikTok", "https://www.tiktok.com/"],
+        ["google", "Google", "https://www.google.com/"]
+    ];
 
-    if (command.includes("chatgpt") || command.includes("chat gpt")) {
-        showWebsite("ChatGPT", "https://chatgpt.com/");
-        return;
-    }
-
-    if (command.includes("instagram")) {
-        showWebsite("Instagram", "https://www.instagram.com/");
-        return;
-    }
-
-    if (command.includes("facebook")) {
-        showWebsite("Facebook", "https://www.facebook.com/");
-        return;
-    }
-
-    if (command.includes("tiktok")) {
-        showWebsite("TikTok", "https://www.tiktok.com/");
-        return;
-    }
-
-    if (command.includes("google")) {
-        showWebsite("Google", "https://www.google.com/");
-        return;
+    for (const [keyword, name, url] of websites) {
+        if (command.includes(keyword)) {
+            showWebsite(name, url);
+            return;
+        }
     }
 
     // AYUDA
@@ -600,24 +516,14 @@ function processCommand(rawText) {
         command.includes("que puedes hacer") ||
         command.includes("tus funciones")
     ) {
-        reply(
-            "Mis funciones actuales son: conversar mediante comandos, " +
-            "recordar datos, guardar tu nombre, decirte la hora y fecha, " +
-            "resolver operaciones matemáticas, preparar búsquedas, " +
-            "abrir sitios web y utilizar reconocimiento y síntesis de voz. " +
-            "Mi IA generativa todavía no está conectada."
-        );
+        reply("Puedo conversar mediante comandos, recordar datos, guardar tu nombre, decirte la hora y fecha, resolver operaciones matemáticas, preparar búsquedas, abrir sitios web y utilizar reconocimiento y síntesis de voz. Mi IA generativa todavía no está conectada.");
         return;
     }
 
     // GRACIAS
 
-    if (
-        command.includes("gracias") ||
-        command.includes("te lo agradezco")
-    ) {
-        reply("Siempre a tus órdenes" +
-            (memory.name ? ", " + memory.name : "") + ".");
+    if (command.includes("gracias") || command.includes("te lo agradezco")) {
+        reply("Siempre a tus órdenes" + (memory.name ? ", " + memory.name : "") + ".");
         return;
     }
 
@@ -632,7 +538,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // REINICIAR CHAT
+    // LIMPIAR CHAT
 
     if (
         command.includes("reinicia conversacion") ||
@@ -645,37 +551,24 @@ function processCommand(rawText) {
 
     // CONTEXTO
 
-    if (
-        command.startsWith("y ") ||
-        command.startsWith("tambien ") ||
-        command.startsWith("ahora busca ")
-    ) {
+    if (command.startsWith("y ") || command.startsWith("tambien ") || command.startsWith("ahora busca ")) {
         if (lastTopic) {
-            const followUp = original.replace(/^y /i, "");
-            searchWeb(lastTopic + " " + followUp);
+            searchWeb(lastTopic + " " + original.replace(/^y\s+/i, ""));
             return;
         }
     }
 
-    if (
-        command.includes("cuentame mas") ||
-        command.includes("dime mas") ||
-        command.includes("continua")
-    ) {
+    if (command.includes("cuentame mas") || command.includes("dime mas") || command.includes("continua")) {
         if (lastTopic) {
             searchWeb("más información sobre " + lastTopic);
             return;
         }
     }
 
-    // RESPUESTAS GENERALES
-
-    if (command.includes("quien es")) {
-        searchWeb(original);
-        return;
-    }
+    // PREGUNTAS QUE PUEDEN BUSCARSE
 
     if (
+        command.includes("quien es") ||
         command.includes("que es ") ||
         command.includes("como funciona ") ||
         command.includes("por que ")
@@ -684,15 +577,12 @@ function processCommand(rawText) {
         return;
     }
 
-    // FALLBACK
+    // RESPUESTA GENERAL
 
     reply(
         "Entiendo tu solicitud" +
         (memory.name ? ", " + memory.name : "") +
-        ". Todavía no tengo un modelo de inteligencia artificial " +
-        "conectado para generar respuestas abiertas. " +
-        "Puedo ayudarte a buscar información o ejecutar mis funciones. " +
-        "Si quieres, dime 'busca " + original + "'."
+        ". Todavía no tengo un modelo de inteligencia artificial conectado para generar respuestas abiertas. Puedo ayudarte a buscar información o ejecutar mis funciones."
     );
 }
 
@@ -704,7 +594,6 @@ function sendMessage() {
     if (!input) return;
 
     const text = input.value.trim();
-
     if (!text) return;
 
     input.value = "";
@@ -716,10 +605,8 @@ if (sendButton) {
 }
 
 if (input) {
-    input.addEventListener("keydown", function (event) {
-        if (event.key === "Enter") {
-            sendMessage();
-        }
+    input.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") sendMessage();
     });
 }
 
@@ -728,36 +615,30 @@ if (input) {
 // ==================================================
 
 const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
+    window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (SpeechRecognition && micButton) {
     recognition = new SpeechRecognition();
-
     recognition.lang = "es-MX";
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    recognition.onstart = function () {
+    recognition.onstart = function() {
         isListening = true;
-
         document.body.classList.add("listening");
-
         micButton.textContent = "🛑 DETENER";
         setStatus("ESCUCHANDO", "#00ffcc");
     };
 
-    recognition.onresult = function (event) {
+    recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
 
-        if (input) {
-            input.value = transcript;
-        }
+        if (input) input.value = transcript;
 
         processCommand(transcript);
     };
 
-    recognition.onerror = function (event) {
+    recognition.onerror = function(event) {
         console.log("Micrófono:", event.error);
 
         if (event.error === "not-allowed") {
@@ -769,12 +650,10 @@ if (SpeechRecognition && micButton) {
         }
     };
 
-    recognition.onend = function () {
+    recognition.onend = function() {
         isListening = false;
-
         document.body.classList.remove("listening");
         micButton.textContent = "🎤 HABLAR";
-
         setStatus("SISTEMA EN LÍNEA", "#00ff88");
     };
 
@@ -783,10 +662,8 @@ if (SpeechRecognition && micButton) {
     micButton.textContent = "MICRÓFONO NO COMPATIBLE";
 }
 
-// Botón micrófono
-
 if (micButton) {
-    micButton.addEventListener("click", function () {
+    micButton.addEventListener("click", function() {
         if (!recognition) {
             reply("El reconocimiento de voz no es compatible con este entorno.");
             return;
@@ -810,16 +687,14 @@ if (micButton) {
 // ==================================================
 
 if (voiceButton) {
-    voiceButton.addEventListener("click", function () {
+    voiceButton.addEventListener("click", function() {
         voiceEnabled = !voiceEnabled;
 
         if (voiceEnabled) {
             voiceButton.textContent = "🔊 VOZ ON";
             reply("Sistema de voz activado.");
         } else {
-            if (window.speechSynthesis) {
-                window.speechSynthesis.cancel();
-            }
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
 
             voiceButton.textContent = "🔇 VOZ OFF";
             setStatus("SISTEMA EN LÍNEA", "#00ff88");
@@ -833,9 +708,7 @@ if (voiceButton) {
 // ==================================================
 
 function clearChat() {
-    if (chat) {
-        chat.innerHTML = "";
-    }
+    if (chat) chat.innerHTML = "";
 
     conversationHistory = [];
     saveChat();
@@ -846,8 +719,7 @@ function clearChat() {
     );
 
     if (assistantMessage) {
-        assistantMessage.textContent =
-            "Sistemas reiniciados. Esperando instrucciones.";
+        assistantMessage.textContent = "Sistemas reiniciados. Esperando instrucciones.";
     }
 
     setStatus("SISTEMA EN LÍNEA", "#00ff88");
@@ -858,13 +730,13 @@ if (clearButton) {
 }
 
 // ==================================================
-// RECUPERAR CHAT AL ABRIR
+// RECUPERAR CHAT
 // ==================================================
 
 function restoreChat() {
     const saved = loadChat();
 
-    if (saved.length === 0) {
+    if (!saved.length) {
         addMessage(
             "Sistemas en línea. Memoria local activa. Esperando instrucciones.",
             "jarvis"
@@ -881,14 +753,15 @@ function restoreChat() {
     conversationHistory = saved.slice(-40);
 }
 
-restoreChat();
-
 // ==================================================
 // INICIO
 // ==================================================
 
-console.log("JARVIS 2.0 iniciado.");
+restoreChat();
+
+setStatus("SISTEMA EN LÍNEA", "#00ff88");
+
+console.log("JARVIS 2.1 iniciado.");
 console.log("Memoria local:", memory);
-console.log("Interfaz cargada.");
 console.log("Módulo de voz:", recognition ? "disponible" : "no disponible");
 console.log("Sistema listo.");
