@@ -348,7 +348,6 @@ function calculate(text) {
         .replace(/%/g, "/100")
         .trim();
 
-    // Solo permite operaciones matemáticas seguras.
     if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
         reply("No pude interpretar esa operación matemática.");
         return;
@@ -383,9 +382,7 @@ function processCommand(rawText) {
     addMessage(original, "user");
     setStatus("ANALIZANDO", "#ffaa00");
 
-    // ----------------------------------------------
     // RECORDAR NOMBRE
-    // ----------------------------------------------
 
     if (
         command.startsWith("me llamo ") ||
@@ -403,9 +400,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // MEMORIA
-    // ----------------------------------------------
 
     if (
         command.startsWith("recuerda que ") ||
@@ -439,9 +434,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // SALUDOS
-    // ----------------------------------------------
 
     if (
         command === "hola" ||
@@ -456,9 +449,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // IDENTIDAD
-    // ----------------------------------------------
 
     if (
         command.includes("quien eres") ||
@@ -472,9 +463,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // HORA
-    // ----------------------------------------------
 
     if (
         command.includes("hora") ||
@@ -489,9 +478,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // FECHA
-    // ----------------------------------------------
 
     if (
         command.includes("fecha") ||
@@ -508,9 +495,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // CALCULADORA
-    // ----------------------------------------------
 
     if (
         command.startsWith("cuanto es ") ||
@@ -523,9 +508,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // ESTADO
-    // ----------------------------------------------
 
     if (
         command.includes("como estas") ||
@@ -540,9 +523,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // BUSCAR
-    // ----------------------------------------------
 
     if (
         command.startsWith("busca ") ||
@@ -560,9 +541,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // YOUTUBE
-    // ----------------------------------------------
 
     if (
         command.startsWith("busca en youtube ") ||
@@ -582,9 +561,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // SITIOS WEB
-    // ----------------------------------------------
 
     if (command.includes("spotify")) {
         showWebsite("Spotify", "https://open.spotify.com/");
@@ -616,9 +593,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // AYUDA
-    // ----------------------------------------------
 
     if (
         command.includes("ayuda") ||
@@ -635,9 +610,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // GRACIAS
-    // ----------------------------------------------
 
     if (
         command.includes("gracias") ||
@@ -648,9 +621,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // DESPEDIDA
-    // ----------------------------------------------
 
     if (
         command.includes("adios") ||
@@ -661,9 +632,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
     // REINICIAR CHAT
-    // ----------------------------------------------
 
     if (
         command.includes("reinicia conversacion") ||
@@ -674,9 +643,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
-    // CONTEXTO DE CONVERSACIÓN
-    // ----------------------------------------------
+    // CONTEXTO
 
     if (
         command.startsWith("y ") ||
@@ -701,9 +668,7 @@ function processCommand(rawText) {
         }
     }
 
-    // ----------------------------------------------
-    // RESPUESTA GENERAL
-    // ----------------------------------------------
+    // RESPUESTAS GENERALES
 
     if (command.includes("quien es")) {
         searchWeb(original);
@@ -719,9 +684,7 @@ function processCommand(rawText) {
         return;
     }
 
-    // ----------------------------------------------
-    // RESPUESTA PERSONALIZADA
-    // ----------------------------------------------
+    // FALLBACK
 
     reply(
         "Entiendo tu solicitud" +
