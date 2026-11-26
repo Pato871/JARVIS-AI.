@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <main class="app">
+
+    <header>
+      <div class="logo">J.A.R.V.I.S.</div>
+      <div class="subtitle">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+      <div class="system-status">
+        <span class="dot" id="statusDot"></span>
+        <span id="status">SISTEMA EN LÍNEA</span>
+      </div>
+    </header>
+
+    <section class="visualizer">
+
+      <div class="orbit orbit-one"></div>
+      <div class="orbit orbit-two"></div>
+      <div class="orbit orbit-three"></div>
+
+      <div class="core" id="core">
+        <div class="core-inner">
+          <span>J</span>
+        </div>
+      </div>
+
+    </section>
+
+    <div class="assistant-message" id="assistantMessage">
+      Buenos días. Todos mis sistemas están operativos.
+      ¿En qué puedo ayudarte?
+    </div>
+
+    <section class="chat" id="chat">
+
+      <div class="message jarvis">
+        <span class="speaker">JARVIS</span>
+        <p>Bienvenido. Estoy esperando tus instrucciones.</p>
+      </div>
+
+    </section>
+
+    <section class="controls">
+
+      <div class="input-row">
+        <input
+          id="userInput"
+          type="text"
+          placeholder="Escribe una instrucción..."
+          autocomplete="off"
+        >
+
+        <button id="sendButton">ENVIAR</button>
+      </div>
+
+      <div class="buttons">
+
+        <button id="micButton" class="secondary">
+          🎤 HABLAR
+        </button>
+
+        <button id="voiceButton" class="secondary">
+          🔊 VOZ ON
+        </button>
+
+        <button id="clearButton" class="secondary">
+          LIMPIAR
+        </button>
+
+      </div>
+
+    </section>
+
+    <footer>
+      JARVIS PERSONAL AI · PROTOTYPE 2.0
+    </footer>
+
+  </main>
+
+  <script src="script.js"></script>
+
+</body>
+</html>
